@@ -11,6 +11,8 @@ from typing import Any
 from gbqa.crypto import encrypt, generate_key
 
 import base64
+import logging
+import time
 from gbqa.env import load_root_dotenv, root_env_path
 from gbqa.harbor.config import render_agent_config
 from gbqa.spec import GBQAMetadata, load_gbqa_metadata
@@ -70,7 +72,8 @@ class GBQAHarborAgent(BaseAgent):
 
     async def setup(self, environment: BaseEnvironment) -> None:
         repo_root = self._repo_root()
-        await environment.exec(
+        await self._exec(
+            environment,
             command=(
                 f"mkdir -p {self._REMOTE_ROOT} {self._REMOTE_RUNTIME_DIR} "
                 f"{self.metadata.agent_artifact_dir}/artifacts"
@@ -138,7 +141,8 @@ class GBQAHarborAgent(BaseAgent):
             f"> {self.metadata.agent_artifact_dir}/gbqa-agent.stdout "
             f"2> {self.metadata.agent_artifact_dir}/gbqa-agent.stderr"
         )
-        result = await environment.exec(
+        result = await self._exec(
+            environment,
             command=run_command,
             env=runtime_env,
             timeout_sec=max(300, self.max_steps * 90),
@@ -198,7 +202,7 @@ class GBQAHarborAgent(BaseAgent):
             "fi; "
             f"test -f {software_dir}/backend/app.py"
         )
-        result = await environment.exec(command=command, timeout_sec=300)
+        result = await self._exec(environment, command=command, timeout_sec=300)
         if getattr(result, "return_code", 1) != 0:
             raise RuntimeError(
                 "Failed to prepare software release "
@@ -215,7 +219,7 @@ class GBQAHarborAgent(BaseAgent):
             "2>&1 < /dev/null && "
             f"echo started > {self.metadata.agent_artifact_dir}/dark-castle-server.pid"
         )
-        result = await environment.exec(command=command, timeout_sec=30)
+        result = await self._exec(environment, command=command, timeout_sec=30)
         if getattr(result, "return_code", 1) != 0:
             raise RuntimeError("Failed to start Dark Castle service.")
 
@@ -229,7 +233,7 @@ class GBQAHarborAgent(BaseAgent):
             f"cat {self.metadata.agent_artifact_dir}/dark-castle-server.log || true; "
             "exit 1"
         )
-        result = await environment.exec(command=command, timeout_sec=90)
+        result = await self._exec(environment, command=command, timeout_sec=90)
         if getattr(result, "return_code", 1) != 0:
             raise RuntimeError(f"Dark Castle service did not become healthy: {url}")
 
@@ -241,7 +245,8 @@ class GBQAHarborAgent(BaseAgent):
             f"--task-id {shlex.quote(self.metadata.task_id)} "
             f"--out-dir {self.metadata.agent_artifact_dir}"
         )
-        result = await environment.exec(
+        result = await self._exec(
+            environment,
             command=command,
             env={"PYTHONPATH": f"{self._REMOTE_ROOT}:{self._REMOTE_AGENT_DIR}"},
             timeout_sec=120,
@@ -257,9 +262,44 @@ class GBQAHarborAgent(BaseAgent):
     ) -> None:
         quoted_path = shlex.quote(remote_path)
         command = f"cat > {quoted_path} <<'GBQA_CONFIG_EOF'\n{content}\nGBQA_CONFIG_EOF"
-        result = await environment.exec(command=command, timeout_sec=30)
+        result = await self._exec(environment, command=command, timeout_sec=30)
         if getattr(result, "return_code", 1) != 0:
             raise RuntimeError(f"Failed to write remote file: {remote_path}")
+
+    async def _exec(
+        self,
+        environment: BaseEnvironment,
+        *,
+        command: str,
+        user: str | None = None,
+        env: dict[str, str] | None = None,
+        timeout_sec: float | None = None,
+    ) -> Any:
+        """Wrap environment.exec with debug logging of command, return code and duration."""
+        is_debug = self.logger.isEnabledFor(logging.DEBUG)
+        start = time.monotonic() if is_debug else None
+
+        if is_debug:
+            display = command[:500] + "..." if len(command) > 500 else command
+            self.logger.debug("[exec] command=%s", display)
+            if user:
+                self.logger.debug("[exec] user=%s", user)
+            if env:
+                self.logger.debug("[exec] env_keys=%s", list(env.keys()))
+
+        result = await environment.exec(
+            command=command,
+            user=user,
+            env=env,
+            timeout_sec=timeout_sec,
+        )
+
+        if is_debug:
+            elapsed = time.monotonic() - start
+            rc = getattr(result, "return_code", None)
+            self.logger.debug("[exec] return_code=%s elapsed=%.2fs", rc, elapsed)
+
+        return result
 
     def _runtime_env(self) -> dict[str, str]:
         load_root_dotenv()
@@ -275,6 +315,8 @@ class GBQAHarborAgent(BaseAgent):
                 if value:
                     env[key] = value
         env.setdefault("BASE_URL", DEFAULT_BASE_URL)
+        if self.logger.isEnabledFor(logging.DEBUG):
+            env["GBQA_DEBUG"] = "1"
         return env
 
     @staticmethod

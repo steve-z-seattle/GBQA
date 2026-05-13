@@ -27,3 +27,10 @@
 - `gbqa/verifier.py` now attempts **LLM semantic matching** first (via `agent.src.evaluator.Evaluator`) when the agent evaluator package and env credentials are available.
 - Falls back to the legacy `SequenceMatcher` implementation on any LLM failure, so scoring is never blocked.
 - Diagnostics (`_diagnostics`, `_matcher_used`) are included in `reward.json` for transparency.
+
+## 2026-05-13 — CLI Model Override Fix
+
+### 🛠️ Harbor Agent Environment Priority
+- **Fixed** (`gbqa/harbor/agent.py`): CLI `-m` / `--model` argument now correctly overrides the `MODEL_NAME` environment variable (including values loaded from `.env`).
+- Before: `os.environ` / `.env` could shadow the CLI `model_name` argument because `self.model_name` was only used as a fallback.
+- After: established correct priority — **CLI `-m` > `--env MODEL_NAME=...` > `.env` / shell**.

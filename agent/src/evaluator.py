@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional
 import json
+import os
+import sys
 from pathlib import Path
 
 from .llm_client import LlmClient
@@ -108,12 +110,29 @@ class Evaluator:
         matched_truth = set()
         used_truth_indices = set()
         details: List[MatchDetail] = []
+        debug = os.environ.get("GBQA_DEBUG") == "1"
         for bug in bugs:
+            prompt = self._build_prompt(bug, self._ground_truth)
+            if debug:
+                print(f"[evaluator] prompt for bug '{bug.title}':", file=sys.stderr)
+                print(prompt, file=sys.stderr)
+
             response = self._match_agent.run(
-                self._build_prompt(bug, self._ground_truth),
+                prompt,
                 response_format=GroundTruthMatch,
             )
             payload = response.parsed
+
+            if debug:
+                if payload is not None:
+                    print(
+                        f"[evaluator] response: match_id={payload.match_id} "
+                        f"score={payload.score} rationale={payload.rationale}",
+                        file=sys.stderr,
+                    )
+                else:
+                    print(f"[evaluator] response: error={response.error}", file=sys.stderr)
+
             if payload is None:
                 fallback_detail, match_index = self._similarity_detail(
                     bug,
