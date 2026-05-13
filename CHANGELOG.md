@@ -34,3 +34,16 @@
 - **Fixed** (`gbqa/harbor/agent.py`): CLI `-m` / `--model` argument now correctly overrides the `MODEL_NAME` environment variable (including values loaded from `.env`).
 - Before: `os.environ` / `.env` could shadow the CLI `model_name` argument because `self.model_name` was only used as a fallback.
 - After: established correct priority — **CLI `-m` > `--env MODEL_NAME=...` > `.env` / shell**.
+
+## 2026-05-13 — Debug Logging for Agent Execution and Verifier
+
+### 🔍 Agent Execution Tracing
+- **New** (`gbqa/harbor/agent.py`): `_exec()` wrapper around all `environment.exec()` calls.
+- When `harbor run --debug` is used, every command (truncated to 500 chars), user, env keys, return code and elapsed time are printed to the debug logger.
+
+### 🔍 Verifier Debug Output
+- **Agent** (`gbqa/harbor/agent.py`): encrypts `GBQA_DEBUG=1` into `verifier_env.enc` alongside LLM credentials so the verifier can detect debug mode.
+- **Verifier** (`gbqa/tasks/dark-castle/tests/gbqa_verifier.py`): prints the full evaluation result (including `_diagnostics` and `_matcher_used`) to stderr when `GBQA_DEBUG=1`.
+
+### 🔍 LLM Evaluator Real-Time Tracing
+- **Agent** (`agent/src/evaluator.py`): reads `GBQA_DEBUG` and prints each prompt sent to the LLM and the structured response (`match_id`, `score`, `rationale`) as soon as it returns, giving live visibility into the semantic matching process which can take several minutes.
