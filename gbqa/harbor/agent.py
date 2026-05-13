@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import shlex
@@ -132,21 +133,49 @@ class GBQAHarborAgent(BaseAgent):
         await self._start_dark_castle(environment)
         await self._wait_for_service(environment)
 
+        debug_flag = "--debug" if self.logger.isEnabledFor(logging.DEBUG) else ""
+        redirect = (
+            ""
+            if self.logger.isEnabledFor(logging.DEBUG)
+            else (
+                f"> {self.metadata.agent_artifact_dir}/gbqa-agent.stdout "
+                f"2> {self.metadata.agent_artifact_dir}/gbqa-agent.stderr"
+            )
+        )
         run_command = (
             f"cd {shlex.quote(self._REMOTE_AGENT_DIR)} && "
             f"{shlex.quote(self._REMOTE_PYTHON)} run_agent.py "
             f"--task {shlex.quote(self.metadata.task_slug)} "
+            f"{debug_flag} "
             f"--config {shlex.quote(self._REMOTE_RUNTIME_DIR + '/config.yaml')} "
             f"--max-steps {self.max_steps} "
-            f"> {self.metadata.agent_artifact_dir}/gbqa-agent.stdout "
-            f"2> {self.metadata.agent_artifact_dir}/gbqa-agent.stderr"
+            f"{redirect}"
         )
-        result = await self._exec(
-            environment,
-            command=run_command,
-            env=runtime_env,
-            timeout_sec=max(300, self.max_steps * 90),
-        )
+
+        debug_log_path = f"{self.metadata.agent_artifact_dir}/debug-live.log"
+        if self.logger.isEnabledFor(logging.DEBUG):
+            runtime_env["GBQA_DEBUG_LOG"] = debug_log_path
+
+        poll_task = None
+        if self.logger.isEnabledFor(logging.DEBUG):
+            poll_task = asyncio.create_task(
+                self._poll_debug_log(environment, debug_log_path)
+            )
+
+        try:
+            result = await self._exec(
+                environment,
+                command=run_command,
+                env=runtime_env,
+                timeout_sec=max(300, self.max_steps * 90),
+            )
+        finally:
+            if poll_task is not None:
+                poll_task.cancel()
+                try:
+                    await poll_task
+                except asyncio.CancelledError:
+                    pass
 
         await self._export_artifacts(environment)
         if hasattr(context, "metadata"):
@@ -265,6 +294,41 @@ class GBQAHarborAgent(BaseAgent):
         result = await self._exec(environment, command=command, timeout_sec=30)
         if getattr(result, "return_code", 1) != 0:
             raise RuntimeError(f"Failed to write remote file: {remote_path}")
+
+    async def _poll_debug_log(
+        self,
+        environment: BaseEnvironment,
+        debug_log_path: str,
+    ) -> None:
+        """Poll the live debug log file in the sandbox and stream new lines to logger."""
+        offset = 0
+        while True:
+            try:
+                await asyncio.sleep(5)
+                result = await environment.exec(
+                    command=(
+                        f"tail -c +{offset + 1} {shlex.quote(debug_log_path)} "
+                        "2>/dev/null || true"
+                    ),
+                    timeout_sec=10,
+                )
+                stdout = getattr(result, "stdout", None)
+                if stdout:
+                    text = (
+                        stdout.decode("utf-8", errors="replace")
+                        if isinstance(stdout, bytes)
+                        else str(stdout)
+                    )
+                    if text:
+                        for line in text.splitlines():
+                            self.logger.debug("[agent] %s", line)
+                        offset += len(
+                            text.encode("utf-8", errors="replace")
+                        )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                pass
 
     async def _exec(
         self,
