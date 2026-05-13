@@ -11,16 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
-def _debug_log(msg: str) -> None:
-    path = os.environ.get("GBQA_DEBUG_LOG")
-    if not path:
-        return
-    try:
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(msg + "\n")
-            f.flush()
-    except Exception:
-        pass
+from gbqa.debug import debug_log
 
 from .bug_detector import BugDetector
 from .evaluator import Evaluator
@@ -125,7 +116,7 @@ class Orchestrator:
                 if debug:
                     m = f"[orchestrator] step {step}/{self._max_steps} starting"
                     print(m, file=sys.stderr)
-                    _debug_log(m)
+                    debug_log(m)
                 context = self._build_context(
                     task_profile=task_profile,
                     observation=current_observation,
@@ -134,7 +125,7 @@ class Orchestrator:
                 if debug and plan.action:
                     m = f"[orchestrator] step {step} action: {plan.action.command[:200]}"
                     print(m, file=sys.stderr)
-                    _debug_log(m)
+                    debug_log(m)
                 if plan.error:
                     report.metadata["early_stop_reason"] = "planner_error"
                     report.metadata["failed_stage"] = "planner"
@@ -153,7 +144,7 @@ class Orchestrator:
                     msg = current_observation.message or ""
                     m = f"[orchestrator] step {step} observation: {msg[:200]}"
                     print(m, file=sys.stderr)
-                    _debug_log(m)
+                    debug_log(m)
 
                 record = StepRecord(
                     step=step,
@@ -174,7 +165,7 @@ class Orchestrator:
                 if debug and findings:
                     m = f"[orchestrator] step {step} bugs found: {len(findings)}"
                     print(m, file=sys.stderr)
-                    _debug_log(m)
+                    debug_log(m)
                 for bug in findings:
                     report.bugs.append(bug)
                     self._memory.record_bug(bug, step)

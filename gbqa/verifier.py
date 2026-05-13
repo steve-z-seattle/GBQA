@@ -11,6 +11,8 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
+from gbqa.debug import debug_log
+
 # Optional LLM semantic matching via agent/src/evaluator
 _import_error_msg: str = ""
 try:
@@ -110,7 +112,13 @@ def evaluate_bug_report(
         "env_base_url": os.environ.get("BASE_URL", ""),
         "predicted_bug_count": len(predicted),
     }
+    debug = os.environ.get("GBQA_DEBUG") == "1"
+    if debug:
+        debug_log(f"[verifier] {len(predicted)} predicted bugs, {len(ground_truth)} ground truth")
+
     if _AGENT_EVALUATOR_AVAILABLE and llm_client is not None and predicted:
+        if debug:
+            debug_log("[verifier] using llm matcher")
         try:
             result = _evaluate_with_llm(
                 predicted, ground_truth_path, match_threshold, llm_client
@@ -121,15 +129,20 @@ def evaluate_bug_report(
         except Exception as exc:
             diagnostics["llm_eval_error"] = f"{type(exc).__name__}: {exc}"
             diagnostics["llm_eval_traceback"] = traceback.format_exc()
+            if debug:
+                debug_log(f"[verifier] llm matcher failed, falling back to sequence_matcher: {exc}")
             # Any failure in the LLM path falls through to the legacy
             # SequenceMatcher implementation so the verifier never crashes.
             pass
+
+    if debug:
+        debug_log("[verifier] using sequence_matcher")
 
     # Legacy SequenceMatcher fallback (also used when LLM is unavailable).
     used_truth_indices: set[int] = set()
     details: list[MatchDetail] = []
     matched = 0
-    for bug in predicted:
+    for idx, bug in enumerate(predicted, start=1):
         match_index, score = _best_match_index(
             bug,
             ground_truth,
@@ -151,6 +164,11 @@ def evaluate_bug_report(
                 matched=is_match,
             )
         )
+        if debug:
+            debug_log(
+                f"[verifier] bug {idx}/{len(predicted)} '{bug.get('title', '')}' "
+                f"match_id={truth.get('id', '')} score={score:.3f} matched={is_match}"
+            )
 
     precision = matched / len(predicted) if predicted else 0.0
     recall = matched / len(ground_truth) if ground_truth else 0.0

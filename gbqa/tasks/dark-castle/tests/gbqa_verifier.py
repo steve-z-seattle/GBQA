@@ -23,20 +23,11 @@ if _AGENT_ENV_PATH.exists() and _AGENT_KEY_PATH.exists():
     for key_name, value in decrypt(_AGENT_ENV_PATH.read_text(), key).items():
         os.environ.setdefault(key_name, value)
 
+from gbqa.debug import debug_log
 from gbqa.verifier import evaluate_bug_report, write_harbor_reward
 
 
 _VERIFIER_DEBUG_LOG = "/logs/verifier/debug-live.log"
-
-
-def _debug_log(msg: str) -> None:
-    """Write a debug message to the verifier live debug log."""
-    try:
-        with open(_VERIFIER_DEBUG_LOG, "a", encoding="utf-8") as f:
-            f.write(msg + "\n")
-            f.flush()
-    except Exception:
-        pass
 
 
 def main() -> None:
@@ -52,12 +43,13 @@ def main() -> None:
 
     if args.debug:
         os.environ["GBQA_DEBUG"] = "1"
+        os.environ.setdefault("GBQA_DEBUG_LOG", _VERIFIER_DEBUG_LOG)
 
     debug = os.environ.get("GBQA_DEBUG") == "1"
     if debug:
-        _debug_log("[verifier] evaluation started")
-        _debug_log(f"[verifier] bugs_path={args.bugs}")
-        _debug_log(f"[verifier] ground_truth={args.ground_truth}")
+        debug_log("[verifier] evaluation started")
+        debug_log(f"[verifier] bugs_path={args.bugs}")
+        debug_log(f"[verifier] ground_truth={args.ground_truth}")
 
     result = evaluate_bug_report(
         bugs_path=args.bugs,
@@ -66,12 +58,12 @@ def main() -> None:
     )
 
     if debug:
-        _debug_log("[verifier] full result:")
-        _debug_log(json.dumps(result, ensure_ascii=False, indent=2))
+        debug_log("[verifier] full result:")
+        debug_log(json.dumps(result, ensure_ascii=False, indent=2))
 
     write_harbor_reward(result, args.out_dir)
     if debug:
-        _debug_log("[verifier] reward files written")
+        debug_log("[verifier] reward files written")
 
 
 
