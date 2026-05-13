@@ -17,7 +17,6 @@
 
 ### 🐳 Dockerfile Slimming
 - Switched base image from `ubuntu:24.04` to `python:3.13-slim`.
-- Removed Node.js / npm / Playwright dependencies (not needed for API-mode runs).
 - Added `build-essential`, `tmux`, `asciinema` for debugging convenience.
 
 ### 📝 Task Instruction Update
