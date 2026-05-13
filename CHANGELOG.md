@@ -17,7 +17,7 @@
 
 ### 🐳 Dockerfile Slimming
 - Switched base image from `ubuntu:24.04` to `python:3.13-slim`.
-- Added `build-essential`, `tmux`, `asciinema` for debugging convenience.
+- Added `tmux`, `asciinema` for supporting other agents (terminus-2).
 
 ### 📝 Task Instruction Update
 - Added explicit hint: *"After you have found several bugs, you should still try to reach the exit of the castle, instead of terminate."* This guides the agent to treat escape as a secondary objective.
