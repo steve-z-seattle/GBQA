@@ -40,6 +40,11 @@ def main() -> None:
         ground_truth_path=args.ground_truth,
         match_threshold=args.match_threshold,
     )
+
+    if os.environ.get("GBQA_DEBUG") == "1":
+        print("[verifier] full result:", file=sys.stderr)
+        print(json.dumps(result, ensure_ascii=False, indent=2), file=sys.stderr)
+
     write_harbor_reward(result, args.out_dir)
 
 
