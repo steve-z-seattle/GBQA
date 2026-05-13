@@ -354,6 +354,16 @@ class GBQAHarborAgent(BaseAgent):
         start = time.monotonic()
         # task.toml verifier timeout defaults to 600s; add a 60s buffer.
         max_duration = 600 + 60
+        probe_path = "/tmp/gbqa_verifier_poll_probe.txt"
+        error_path = "/tmp/gbqa_verifier_poll_errors.txt"
+        # Write probe file to confirm this task actually gets scheduled.
+        try:
+            await environment.exec(
+                command=f"echo 'poll_task_started at $(date -Iseconds)' > {probe_path}",
+                timeout_sec=10,
+            )
+        except Exception:
+            pass
         while time.monotonic() - start < max_duration:
             try:
                 # Read any new log content first so we don't miss lines when
@@ -394,11 +404,36 @@ class GBQAHarborAgent(BaseAgent):
                     if "done" in done_text:
                         break
 
+                # Heartbeat probe so we can see how many iterations ran.
+                try:
+                    await environment.exec(
+                        command=f"echo 'heartbeat at $(date -Iseconds)' >> {probe_path}",
+                        timeout_sec=5,
+                    )
+                except Exception:
+                    pass
+
                 await asyncio.sleep(1)
             except asyncio.CancelledError:
+                try:
+                    await environment.exec(
+                        command=f"echo 'cancelled at $(date -Iseconds)' >> {probe_path}",
+                        timeout_sec=5,
+                    )
+                except Exception:
+                    pass
                 raise
-            except Exception:
-                pass
+            except Exception as exc:
+                try:
+                    await environment.exec(
+                        command=(
+                            f"echo 'error at $(date -Iseconds): {shlex.quote(str(exc))}' "
+                            f">> {error_path}"
+                        ),
+                        timeout_sec=5,
+                    )
+                except Exception:
+                    pass
 
     async def _exec(
         self,
