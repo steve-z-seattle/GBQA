@@ -41,11 +41,13 @@ def main() -> None:
     parser.add_argument("--debug", action="store_true", help="Enable debug output")
     args = parser.parse_args()
 
+    # --debug forces debug mode; otherwise honour GBQA_DEBUG from decrypted env.
     if args.debug:
         os.environ["GBQA_DEBUG"] = "1"
-        os.environ["GBQA_DEBUG_LOG"] = _VERIFIER_DEBUG_LOG
 
     debug = os.environ.get("GBQA_DEBUG") == "1"
+    if debug:
+        os.environ["GBQA_DEBUG_LOG"] = _VERIFIER_DEBUG_LOG
     if debug:
         debug_log("[verifier] evaluation started")
         debug_log(f"[verifier] bugs_path={args.bugs}")
