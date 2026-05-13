@@ -10,14 +10,21 @@ mkdir -p "${VERIFIER_DIR}"
 PYTHON_BIN="${PYTHON_BIN:-/opt/venv/bin/python}"
 export PYTHONPATH="${PYTHONPATH:-}:/sandbox"
 
+DEBUG_FLAG=""
+if [ "${GBQA_DEBUG:-}" = "1" ]; then
+  DEBUG_FLAG="--debug"
+fi
+
 if [ -f "${AGENT_DIR}/bugs.json" ]; then
   "${PYTHON_BIN}" /tests/gbqa_verifier.py \
     --bugs "${AGENT_DIR}/bugs.json" \
     --ground-truth "${GROUND_TRUTH}" \
-    --out-dir "${VERIFIER_DIR}"
+    --out-dir "${VERIFIER_DIR}" \
+    ${DEBUG_FLAG}
 else
   "${PYTHON_BIN}" /tests/gbqa_verifier.py \
     --bugs /tests/empty_bugs.json \
     --ground-truth "${GROUND_TRUTH}" \
-    --out-dir "${VERIFIER_DIR}"
+    --out-dir "${VERIFIER_DIR}" \
+    ${DEBUG_FLAG}
 fi
