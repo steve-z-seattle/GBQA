@@ -49,9 +49,9 @@ def main() -> None:
     if debug:
         os.environ["GBQA_DEBUG_LOG"] = _VERIFIER_DEBUG_LOG
     if debug:
-        debug_log("[verifier] evaluation started")
-        debug_log(f"[verifier] bugs_path={args.bugs}")
-        debug_log(f"[verifier] ground_truth={args.ground_truth}")
+        debug_log("evaluation started")
+        debug_log(f"bugs_path={args.bugs}")
+        debug_log(f"ground_truth={args.ground_truth}")
 
     result = evaluate_bug_report(
         bugs_path=args.bugs,
@@ -60,12 +60,12 @@ def main() -> None:
     )
 
     if debug:
-        debug_log("[verifier] full result:")
+        debug_log("full result:")
         debug_log(json.dumps(result, ensure_ascii=False, indent=2))
 
     write_harbor_reward(result, args.out_dir)
     if debug:
-        debug_log("[verifier] reward files written")
+        debug_log("reward files written")
 
 
 
