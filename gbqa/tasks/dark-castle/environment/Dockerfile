@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     git \
+    nodejs \
+    npm \
     tar \
     tmux \
     asciinema \
@@ -21,11 +23,15 @@ RUN python3 -m venv /opt/venv \
       flask \
       flask-cors \
       openai \
+      Pillow \
       pydantic \
       python-dotenv \
       pyyaml \
       requests
 
+RUN npm install -g @playwright/mcp@latest playwright \
+    && npx playwright install --with-deps chromium
+    
 ARG DARK_CASTLE_ARCHIVE_URL="https://github.com/Tsumugii24/dark-castle/archive/refs/tags/v0.1.0.tar.gz"
 ARG DARK_CASTLE_DIR="/sandbox/software/dark-castle"
 ENV GBQA_SOFTWARE_DIR="${DARK_CASTLE_DIR}"
