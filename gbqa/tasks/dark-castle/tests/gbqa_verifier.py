@@ -43,7 +43,7 @@ def main() -> None:
 
     if args.debug:
         os.environ["GBQA_DEBUG"] = "1"
-        os.environ.setdefault("GBQA_DEBUG_LOG", _VERIFIER_DEBUG_LOG)
+        os.environ["GBQA_DEBUG_LOG"] = _VERIFIER_DEBUG_LOG
 
     debug = os.environ.get("GBQA_DEBUG") == "1"
     if debug:
