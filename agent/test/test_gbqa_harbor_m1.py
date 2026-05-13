@@ -293,6 +293,9 @@ async def _exercise_setup_with_fake_environment() -> None:
         async def upload_dir(self, source_dir, target_dir):  # noqa: ANN001
             self.uploads.append((str(source_dir), target_dir))
 
+        async def upload_file(self, source_path, target_path):  # noqa: ANN001
+            self.uploads.append((str(source_path), target_path))
+
     env = FakeEnvironment()
     agent = GBQAHarborAgent(logs_dir=Path("logs"), interaction_mode="api", max_steps=2)
     await agent.setup(env)

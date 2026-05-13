@@ -26,6 +26,19 @@ if _AGENT_ENV_PATH.exists() and _AGENT_KEY_PATH.exists():
 from gbqa.verifier import evaluate_bug_report, write_harbor_reward
 
 
+_VERIFIER_DEBUG_LOG = "/logs/verifier/debug-live.log"
+
+
+def _debug_log(msg: str) -> None:
+    """Write a debug message to the verifier live debug log."""
+    try:
+        with open(_VERIFIER_DEBUG_LOG, "a", encoding="utf-8") as f:
+            f.write(msg + "\n")
+            f.flush()
+    except Exception:
+        pass
+
+
 def main() -> None:
     import argparse
 
@@ -34,18 +47,32 @@ def main() -> None:
     parser.add_argument("--ground-truth", required=True)
     parser.add_argument("--out-dir", required=True)
     parser.add_argument("--match-threshold", type=float, default=0.65)
+    parser.add_argument("--debug", action="store_true", help="Enable debug output")
     args = parser.parse_args()
+
+    if args.debug:
+        os.environ["GBQA_DEBUG"] = "1"
+
+    debug = os.environ.get("GBQA_DEBUG") == "1"
+    if debug:
+        _debug_log("[verifier] evaluation started")
+        _debug_log(f"[verifier] bugs_path={args.bugs}")
+        _debug_log(f"[verifier] ground_truth={args.ground_truth}")
+
     result = evaluate_bug_report(
         bugs_path=args.bugs,
         ground_truth_path=args.ground_truth,
         match_threshold=args.match_threshold,
     )
 
-    if os.environ.get("GBQA_DEBUG") == "1":
-        print("[verifier] full result:", file=sys.stderr)
-        print(json.dumps(result, ensure_ascii=False, indent=2), file=sys.stderr)
+    if debug:
+        _debug_log("[verifier] full result:")
+        _debug_log(json.dumps(result, ensure_ascii=False, indent=2))
 
     write_harbor_reward(result, args.out_dir)
+    if debug:
+        _debug_log("[verifier] reward files written")
+
 
 
 if __name__ == "__main__":

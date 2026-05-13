@@ -26,9 +26,10 @@ try:
     from harbor.models.agent.context import AgentContext
 except ImportError:  # pragma: no cover - exercised only without Harbor installed.
     class BaseAgent:  # type: ignore[no-redef]
-        def __init__(self, logs_dir: Path, model_name: str | None = None, **_: Any) -> None:
+        def __init__(self, logs_dir: Path, model_name: str | None = None, logger: logging.Logger | None = None, **_: Any) -> None:
             self.logs_dir = logs_dir
             self.model_name = model_name
+            self.logger = logger or logging.getLogger(__name__)
 
     BaseEnvironment = Any  # type: ignore[assignment,misc]
     AgentContext = Any  # type: ignore[assignment,misc]
@@ -178,6 +179,18 @@ class GBQAHarborAgent(BaseAgent):
                     pass
 
         await self._export_artifacts(environment)
+
+        # Start verifier debug log polling before returning so it runs while
+        # Harbor executes the verifier stage.
+        verifier_poll_task = None
+        if self.logger.isEnabledFor(logging.DEBUG):
+            verifier_debug_log = "/logs/verifier/debug-live.log"
+            verifier_poll_task = asyncio.create_task(
+                self._poll_verifier_debug_log(environment, verifier_debug_log)
+            )
+            # Store reference to keep the task alive after run() returns.
+            self._verifier_poll_task = verifier_poll_task
+
         if hasattr(context, "metadata"):
             context.metadata = {
                 "interaction_mode": self.interaction_mode,
@@ -322,6 +335,59 @@ class GBQAHarborAgent(BaseAgent):
                     if text:
                         for line in text.splitlines():
                             self.logger.debug("[agent] %s", line)
+                        offset += len(
+                            text.encode("utf-8", errors="replace")
+                        )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                pass
+
+    async def _poll_verifier_debug_log(
+        self,
+        environment: BaseEnvironment,
+        debug_log_path: str,
+    ) -> None:
+        """Poll the verifier live debug log file and stream new lines to logger."""
+        offset = 0
+        start = time.monotonic()
+        # task.toml verifier timeout defaults to 600s; add a 60s buffer.
+        max_duration = 600 + 60
+        while time.monotonic() - start < max_duration:
+            try:
+                await asyncio.sleep(5)
+                # Check whether verifier has finished by looking for reward.txt.
+                done_result = await environment.exec(
+                    command="test -f /logs/verifier/reward.txt && echo done || echo running",
+                    timeout_sec=10,
+                )
+                done_stdout = getattr(done_result, "stdout", None)
+                if done_stdout:
+                    done_text = (
+                        done_stdout.decode("utf-8", errors="replace")
+                        if isinstance(done_stdout, bytes)
+                        else str(done_stdout)
+                    )
+                    if "done" in done_text:
+                        break
+
+                result = await environment.exec(
+                    command=(
+                        f"tail -c +{offset + 1} {shlex.quote(debug_log_path)} "
+                        "2>/dev/null || true"
+                    ),
+                    timeout_sec=10,
+                )
+                stdout = getattr(result, "stdout", None)
+                if stdout:
+                    text = (
+                        stdout.decode("utf-8", errors="replace")
+                        if isinstance(stdout, bytes)
+                        else str(stdout)
+                    )
+                    if text:
+                        for line in text.splitlines():
+                            self.logger.debug("[verifier] %s", line)
                         offset += len(
                             text.encode("utf-8", errors="replace")
                         )
