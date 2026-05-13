@@ -28,3 +28,7 @@ else
     --out-dir "${VERIFIER_DIR}" \
     ${DEBUG_FLAG}
 fi
+
+# Keep the container alive briefly so host-side observers can see the
+# verifier result (FOUND) before Harbor tears down the environment.
+sleep 5
