@@ -10,6 +10,8 @@ import os
 import sys
 from pathlib import Path
 
+from gbqa.debug import debug_log
+
 from .llm_client import LlmClient
 from .structured_outputs import GroundTruthMatch
 from .types import BugFinding
@@ -87,7 +89,8 @@ class Evaluator:
         matched = 0
         details: List[MatchDetail] = []
         used_truth_indices = set()
-        for bug in bugs:
+        debug = os.environ.get("GBQA_DEBUG") == "1"
+        for idx, bug in enumerate(bugs, start=1):
             match_index, score = self._best_match_index(bug, used_truth_indices)
             is_match = match_index is not None
             if is_match:
@@ -104,6 +107,13 @@ class Evaluator:
                     matched=is_match,
                 )
             )
+            if debug:
+                m = (
+                    f"[evaluator] bug {idx}/{len(bugs)} '{bug.title}' "
+                    f"match_id={truth.get('id', '')} score={score:.3f} matched={is_match}"
+                )
+                print(m, file=sys.stderr)
+                debug_log(m)
         return self._build_result(matched, bugs, details)
 
     def _evaluate_with_camel(self, bugs: List[BugFinding]) -> EvaluationResult:
@@ -111,11 +121,17 @@ class Evaluator:
         used_truth_indices = set()
         details: List[MatchDetail] = []
         debug = os.environ.get("GBQA_DEBUG") == "1"
-        for bug in bugs:
+        for idx, bug in enumerate(bugs, start=1):
             prompt = self._build_prompt(bug, self._ground_truth)
             if debug:
-                print(f"[evaluator] prompt for bug '{bug.title}':", file=sys.stderr)
+                m = f"[evaluator] bug {idx}/{len(bugs)} '{bug.title}'"
+                print(m, file=sys.stderr)
+                debug_log(m)
+                m = f"[evaluator] prompt for bug '{bug.title}':"
+                print(m, file=sys.stderr)
+                debug_log(m)
                 print(prompt, file=sys.stderr)
+                debug_log(prompt)
 
             response = self._match_agent.run(
                 prompt,
@@ -125,13 +141,16 @@ class Evaluator:
 
             if debug:
                 if payload is not None:
-                    print(
+                    m = (
                         f"[evaluator] response: match_id={payload.match_id} "
-                        f"score={payload.score} rationale={payload.rationale}",
-                        file=sys.stderr,
+                        f"score={payload.score} rationale={payload.rationale}"
                     )
+                    print(m, file=sys.stderr)
+                    debug_log(m)
                 else:
-                    print(f"[evaluator] response: error={response.error}", file=sys.stderr)
+                    m = f"[evaluator] response: error={response.error}"
+                    print(m, file=sys.stderr)
+                    debug_log(m)
 
             if payload is None:
                 fallback_detail, match_index = self._similarity_detail(
