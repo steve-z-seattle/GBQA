@@ -349,28 +349,15 @@ class GBQAHarborAgent(BaseAgent):
         debug_log_path: str,
     ) -> None:
         """Poll the verifier live debug log file and stream new lines to logger."""
+        self.logger.debug("[verifier] poll started")
         offset = 0
         start = time.monotonic()
         # task.toml verifier timeout defaults to 600s; add a 60s buffer.
         max_duration = 600 + 60
         while time.monotonic() - start < max_duration:
             try:
-                await asyncio.sleep(5)
-                # Check whether verifier has finished by looking for reward.txt.
-                done_result = await environment.exec(
-                    command="test -f /logs/verifier/reward.txt && echo done || echo running",
-                    timeout_sec=10,
-                )
-                done_stdout = getattr(done_result, "stdout", None)
-                if done_stdout:
-                    done_text = (
-                        done_stdout.decode("utf-8", errors="replace")
-                        if isinstance(done_stdout, bytes)
-                        else str(done_stdout)
-                    )
-                    if "done" in done_text:
-                        break
-
+                # Read any new log content first so we don't miss lines when
+                # the verifier finishes between iterations.
                 result = await environment.exec(
                     command=(
                         f"tail -c +{offset + 1} {shlex.quote(debug_log_path)} "
@@ -391,6 +378,23 @@ class GBQAHarborAgent(BaseAgent):
                         offset += len(
                             text.encode("utf-8", errors="replace")
                         )
+
+                # Check whether verifier has finished by looking for reward.txt.
+                done_result = await environment.exec(
+                    command="test -f /logs/verifier/reward.txt && echo done || echo running",
+                    timeout_sec=10,
+                )
+                done_stdout = getattr(done_result, "stdout", None)
+                if done_stdout:
+                    done_text = (
+                        done_stdout.decode("utf-8", errors="replace")
+                        if isinstance(done_stdout, bytes)
+                        else str(done_stdout)
+                    )
+                    if "done" in done_text:
+                        break
+
+                await asyncio.sleep(1)
             except asyncio.CancelledError:
                 raise
             except Exception:
