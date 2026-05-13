@@ -146,7 +146,11 @@ def main() -> None:
     parser.add_argument("--task", default="dark-castle")
     parser.add_argument("--task-metadata", default=None)
     parser.add_argument("--max-steps", type=int, default=None)
+    parser.add_argument("--debug", action="store_true", help="Enable debug output")
     args = parser.parse_args()
+
+    if args.debug:
+        os.environ["GBQA_DEBUG"] = "1"
 
     config = load_config(args.config)
     if args.task_metadata:
