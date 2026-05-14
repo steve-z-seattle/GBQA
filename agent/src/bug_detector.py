@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import List, Optional
 
+from gbqa.debug import debug_log
+
 from .llm_client import LlmClient
 from .structured_outputs import BugReviewBatch
 from .types import Action, BugFinding, Observation
@@ -111,6 +113,13 @@ class BugDetector:
         if self._review_agent and findings:
             findings = self._refine_with_llm(action, observation, findings)
 
+        for finding in findings:
+            m = (
+                f"[detector] finding rule={finding.tags[0] if finding.tags else 'unknown'} "
+                f"title=\"{finding.title}\" confidence={finding.confidence:.2f}"
+            )
+            debug_log(m)
+
         return findings
 
     @classmethod
@@ -123,7 +132,11 @@ class BugDetector:
         )
         if execution_origin == "execution":
             return False
-        return cls._is_benign_failure_message(observation.message)
+        is_benign = cls._is_benign_failure_message(observation.message)
+        if is_benign:
+            msg = str(observation.message or "")[:100]
+            debug_log(f"[detector] benign filtered: {msg}")
+        return is_benign
 
     @staticmethod
     def _check_response_format(observation: Observation) -> List[str]:
