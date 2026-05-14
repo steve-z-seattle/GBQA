@@ -203,6 +203,10 @@ class Orchestrator:
                 reflection = None
                 fatal_llm_error = ""
                 if self._reflection_analyzer and should_reflect:
+                    if debug:
+                        m = f"[reflection] step {step} triggered"
+                        print(m, file=sys.stderr)
+                        debug_log(m)
                     reflection_context = self._build_context(
                         task_profile=task_profile,
                         observation=current_observation,
@@ -215,6 +219,18 @@ class Orchestrator:
                     record.reflection_prompt = reflection.prompt
                     record.reflection_output = reflection.output
                     last_reflection_step = step
+                    if debug and reflection.output:
+                        try:
+                            import json as _json
+                            ref_data = _json.loads(reflection.output)
+                            be = ref_data.get("bug_exist", False)
+                            bc = ref_data.get("bug_confidence", 0.0)
+                            bev = str(ref_data.get("bug_evidence", ""))[:200]
+                            m = f"[reflection] step {step} result bug_exist={be} confidence={bc:.2f} evidence={bev}"
+                        except Exception:
+                            m = f"[reflection] step {step} result (parse error)"
+                        print(m, file=sys.stderr)
+                        debug_log(m)
                     if reflection.error:
                         fatal_llm_error = reflection.error
                     promoted_bug = self._promote_reflection_bug(
@@ -225,6 +241,10 @@ class Orchestrator:
                         existing_bugs=report.bugs,
                     )
                     if promoted_bug is not None:
+                        if debug:
+                            m = f"[bug] step={step} promoted title=\"{promoted_bug.title}\" confidence={promoted_bug.confidence:.2f}"
+                            print(m, file=sys.stderr)
+                            debug_log(m)
                         report.bugs.append(promoted_bug)
                         self._memory.record_bug(promoted_bug, step)
                         self._reporter.log_bug(promoted_bug, step)

@@ -134,14 +134,10 @@ class GBQAHarborAgent(BaseAgent):
         await self._start_dark_castle(environment)
         await self._wait_for_service(environment)
 
-        debug_flag = "--debug" if self.logger.isEnabledFor(logging.DEBUG) else ""
+        debug_flag = "--debug" if self._is_debug_mode() else ""
         redirect = (
-            ""
-            if self.logger.isEnabledFor(logging.DEBUG)
-            else (
-                f"> {self.metadata.agent_artifact_dir}/gbqa-agent.stdout "
-                f"2> {self.metadata.agent_artifact_dir}/gbqa-agent.stderr"
-            )
+            f"> {self.metadata.agent_artifact_dir}/gbqa-agent.stdout "
+            f"2> {self.metadata.agent_artifact_dir}/gbqa-agent.stderr"
         )
         run_command = (
             f"cd {shlex.quote(self._REMOTE_AGENT_DIR)} && "
@@ -154,11 +150,11 @@ class GBQAHarborAgent(BaseAgent):
         )
 
         debug_log_path = f"{self.metadata.agent_artifact_dir}/debug-live.log"
-        if self.logger.isEnabledFor(logging.DEBUG):
+        if self._is_debug_mode():
             runtime_env["GBQA_DEBUG_LOG"] = debug_log_path
 
         poll_task = None
-        if self.logger.isEnabledFor(logging.DEBUG):
+        if self._is_debug_mode():
             poll_task = asyncio.create_task(
                 self._poll_debug_log(environment, debug_log_path)
             )
@@ -183,7 +179,7 @@ class GBQAHarborAgent(BaseAgent):
         # Start verifier debug log polling before returning so it runs while
         # Harbor executes the verifier stage.
         verifier_poll_task = None
-        if self.logger.isEnabledFor(logging.DEBUG):
+        if self._is_debug_mode():
             verifier_debug_log = "/logs/verifier/debug-live.log"
             verifier_poll_task = asyncio.create_task(
                 self._poll_verifier_debug_log(environment, verifier_debug_log)
@@ -410,7 +406,7 @@ class GBQAHarborAgent(BaseAgent):
         timeout_sec: float | None = None,
     ) -> Any:
         """Wrap environment.exec with debug logging of command, return code and duration."""
-        is_debug = self.logger.isEnabledFor(logging.DEBUG)
+        is_debug = self._is_debug_mode()
         start = time.monotonic() if is_debug else None
 
         if is_debug:
@@ -435,6 +431,22 @@ class GBQAHarborAgent(BaseAgent):
 
         return result
 
+    def _is_debug_mode(self) -> bool:
+        """Return whether Harbor was run with --debug.
+
+        Harbor's global logger is always DEBUG level, but its console handler
+        reflects the --debug flag (INFO when off, DEBUG when on).
+        """
+        logger = self.logger
+        while logger is not None:
+            for handler in getattr(logger, "handlers", []):
+                if isinstance(handler, logging.StreamHandler) and not isinstance(
+                    handler, logging.FileHandler
+                ):
+                    return handler.level == logging.DEBUG
+            logger = logger.parent
+        return False
+
     def _runtime_env(self) -> dict[str, str]:
         load_root_dotenv()
         env: dict[str, str] = {
@@ -449,7 +461,7 @@ class GBQAHarborAgent(BaseAgent):
                 if value:
                     env[key] = value
         env.setdefault("BASE_URL", DEFAULT_BASE_URL)
-        if self.logger.isEnabledFor(logging.DEBUG):
+        if self._is_debug_mode():
             env["GBQA_DEBUG"] = "1"
         return env
 

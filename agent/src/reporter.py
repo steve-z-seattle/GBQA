@@ -7,6 +7,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 import json
+import os
+
+from gbqa.debug import debug_log
 
 from .types import BugFinding, RunReport, StepRecord
 
@@ -56,6 +59,7 @@ class Reporter:
         self._events.append(payload)
         self._append_jsonl(payload)
         self._print_bug(bug)
+        self._debug_log_bug(bug, step)
 
     def log_summary(self, summary: Dict[str, str], step: int) -> None:
         payload = {"type": "summary", "step": step, "data": summary}
@@ -151,6 +155,17 @@ class Reporter:
     def _print_bug(bug: BugFinding) -> None:
         print(f"\n[bug] {bug.title} (conf={bug.confidence:.2f})")
         print(bug.description)
+
+    @staticmethod
+    def _debug_log_bug(bug: BugFinding, step: int) -> None:
+        m = (
+            f"[bug] step={step} title=\"{bug.title}\" "
+            f"confidence={bug.confidence:.2f} tags={bug.tags}"
+        )
+        debug_log(m)
+        desc = str(bug.description or "")[:200]
+        if desc:
+            debug_log(f"[bug] description={desc}")
 
     @staticmethod
     def _print_summary(summary: Dict[str, str], step: int) -> None:
