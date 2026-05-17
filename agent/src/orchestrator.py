@@ -329,8 +329,9 @@ class Orchestrator:
         evidence = reflection.bug_evidence.strip()
         if not evidence:
             return None
+        title = self._derive_bug_title(evidence)
         candidate = BugFinding(
-            title="Reflection-identified environment issue",
+            title=title,
             description=evidence,
             confidence=float(reflection.bug_confidence),
             evidence={
@@ -345,6 +346,14 @@ class Orchestrator:
         if self._is_duplicate_bug(candidate, existing_bugs):
             return None
         return candidate
+
+    @staticmethod
+    def _derive_bug_title(evidence: str, max_length: int = 80) -> str:
+        """Derive a concise bug title from the first sentence of evidence."""
+        sentence = evidence.split(". ")[0].split(".")[0].strip()
+        if len(sentence) > max_length:
+            sentence = sentence[: max_length - 3].rstrip() + "..."
+        return sentence
 
     @staticmethod
     def _is_duplicate_bug(

@@ -67,31 +67,34 @@ def main() -> None:
     parser.add_argument("--task", default="dark-castle")
     parser.add_argument("--ground-truth", default=None)
     parser.add_argument("--threshold", type=float, default=None)
+    parser.add_argument("--no-llm", action="store_true", help="Use string matching instead of LLM")
     args = parser.parse_args()
 
     config = load_config(args.config)
-    llm_config = config.get_section("llm")
-    api_key = llm_config.get("api_key") or os.getenv("API_KEY")
-    llm_base_url = llm_config.get("base_url") or os.getenv("BASE_URL") or DEFAULT_BASE_URL
-    model = llm_config.get("model") or os.getenv("MODEL_NAME")
-    if not api_key or not llm_base_url or not model:
-        missing = [
-            name
-            for name, value in (
-                ("API_KEY", api_key),
-                ("MODEL_NAME", model),
-            )
-            if not value
-        ]
-        raise RuntimeError("Missing model request field(s): " + ", ".join(missing))
-    llm_client = LlmClient(
-        {
-            **llm_config,
-            "api_key": api_key,
-            "base_url": llm_base_url,
-            "model": model,
-        }
-    )
+    llm_client = None
+    if not args.no_llm:
+        llm_config = config.get_section("llm")
+        api_key = llm_config.get("api_key") or os.getenv("API_KEY")
+        llm_base_url = llm_config.get("base_url") or os.getenv("BASE_URL") or DEFAULT_BASE_URL
+        model = llm_config.get("model") or os.getenv("MODEL_NAME")
+        if not api_key or not llm_base_url or not model:
+            missing = [
+                name
+                for name, value in (
+                    ("API_KEY", api_key),
+                    ("MODEL_NAME", model),
+                )
+                if not value
+            ]
+            raise RuntimeError("Missing model request field(s): " + ", ".join(missing))
+        llm_client = LlmClient(
+            {
+                **llm_config,
+                "api_key": api_key,
+                "base_url": llm_base_url,
+                "model": model,
+            }
+        )
 
     evaluator = Evaluator(
         ground_truth_path=resolve_ground_truth_path(config, args.task, args.ground_truth),
