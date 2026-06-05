@@ -331,13 +331,17 @@ class Evaluator:
         pred_text = "\n".join(pred_items)
 
         return (
-            "Evaluate each predicted bug against the ground-truth bugs.\n"
-            "Return structured output with a list of matches.\n"
+            "You are evaluating agent-generated bug predictions against a small set of ground-truth bugs. "
+            "Your goal is to identify which predicted bugs describe the SAME underlying issue as a ground-truth bug, "
+            "even if the wording, examples, or emphasis differ.\n\n"
+            "Matching rules:\n"
+            "1. Match on the underlying FAULT, not exact wording. A prediction can match a ground-truth bug even if it uses different objects, scenarios, or phrasing, as long as the root cause or buggy behavior is the same.\n"
+            "2. Predictions are often repetitive and verbose. If a predicted bug is a clear but wordy restatement of a ground-truth bug, assign the match.\n"
+            "3. Score should reflect semantic similarity of the underlying bug (0.0 = unrelated, 1.0 = exact same issue). Use scores >= 0.6 for genuine matches.\n"
+            "4. Each ground-truth bug may be matched at most once. If several predictions correspond to the same ground-truth bug, match the one with the clearest description and leave the others unmatched (empty match_id).\n"
+            "5. Do not refuse to match simply because predictions are duplicated or poorly worded.\n\n"
+            "Return structured output with a list of matches. "
             "For each predicted bug, provide: bug_index (0-based), match_id (ground-truth id or empty string), score (0.0-1.0), rationale.\n"
-            "Each ground-truth bug may be matched at most once. "
-            "If several predicted bugs are nearly identical and all correspond to the same ground-truth bug, "
-            "match the one with the clearest description to that ground-truth id and use an empty match_id for the others. "
-            "Do not refuse to choose or leave all of them unmatched simply because the predictions are duplicated.\n"
             "If a predicted bug does not match any ground-truth bug, use an empty match_id.\n\n"
             f"Predicted bugs:\n{pred_text}\n\n"
             f"Ground truth bugs:\n{gt_text}\n"
