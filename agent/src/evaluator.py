@@ -334,7 +334,11 @@ class Evaluator:
             "Evaluate each predicted bug against the ground-truth bugs.\n"
             "Return structured output with a list of matches.\n"
             "For each predicted bug, provide: bug_index (0-based), match_id (ground-truth id or empty string), score (0.0-1.0), rationale.\n"
-            "Each ground-truth bug may be matched at most once. If a predicted bug does not match any ground-truth bug, use an empty match_id.\n\n"
+            "Each ground-truth bug may be matched at most once. "
+            "If several predicted bugs are nearly identical and all correspond to the same ground-truth bug, "
+            "match the one with the clearest description to that ground-truth id and use an empty match_id for the others. "
+            "Do not refuse to choose or leave all of them unmatched simply because the predictions are duplicated.\n"
+            "If a predicted bug does not match any ground-truth bug, use an empty match_id.\n\n"
             f"Predicted bugs:\n{pred_text}\n\n"
             f"Ground truth bugs:\n{gt_text}\n"
         )
