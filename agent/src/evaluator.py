@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 
 from .llm_client import LlmClient
-from .structured_outputs import GroundTruthMatch
+from .structured_outputs import GroundTruthMatch, GroundTruthMatchBatch
 from .types import BugFinding
 
 
@@ -45,9 +45,11 @@ class Evaluator:
         ground_truth_path: str,
         match_threshold: float = 0.65,
         llm_client: Optional[LlmClient] = None,
+        batch: bool = False,
     ) -> None:
         self._ground_truth_path = Path(ground_truth_path)
         self._match_threshold = match_threshold
+        self._batch = batch
         self._ground_truth = self._load_ground_truth()
         self._match_agent = (
             llm_client.create_task_agent(
@@ -65,6 +67,8 @@ class Evaluator:
 
         if self._match_agent is None:
             return self._evaluate_with_similarity(bugs)
+        if self._batch:
+            return self._evaluate_with_camel_batch(bugs)
         return self._evaluate_with_camel(bugs)
 
     def _load_ground_truth(self) -> List[Dict[str, Any]]:
@@ -146,6 +150,63 @@ class Evaluator:
                 )
             )
         matched = sum(1 for item in details if item.matched)
+        return self._build_result(matched, bugs, details, len(matched_truth))
+
+    def _evaluate_with_camel_batch(
+        self, bugs: List[BugFinding]
+    ) -> EvaluationResult:
+        matched_truth: set[str] = set()
+        used_truth_indices: set[int] = set()
+        details: List[MatchDetail] = []
+
+        response = self._match_agent.run(
+            self._build_batch_prompt(bugs, self._ground_truth),
+            response_format=GroundTruthMatchBatch,
+        )
+        payload = response.parsed
+        if payload is None or not payload.matches:
+            # Fallback to similarity for the entire batch
+            return self._evaluate_with_similarity(bugs)
+
+        # Build lookup by bug_index
+        match_items = {item.bug_index: item for item in payload.matches}
+
+        for idx, bug in enumerate(bugs):
+            item = match_items.get(idx)
+            if item is None:
+                # Fallback for this specific bug
+                fallback_detail, match_index = self._similarity_detail(
+                    bug,
+                    used_truth_indices=used_truth_indices,
+                    rationale="missing_batch_item",
+                )
+                details.append(fallback_detail)
+                if match_index is not None and fallback_detail.matched:
+                    used_truth_indices.add(match_index)
+                    matched_truth.add(str(self._ground_truth[match_index].get("id", "")))
+                continue
+
+            is_match = (
+                bool(item.match_id)
+                and item.score >= self._match_threshold
+                and item.match_id not in matched_truth
+            )
+            truth_index = self._truth_index_for_id(item.match_id)
+            if is_match:
+                matched_truth.add(item.match_id)
+                if truth_index is not None:
+                    used_truth_indices.add(truth_index)
+            details.append(
+                MatchDetail(
+                    predicted_title=bug.title,
+                    predicted_description=bug.description,
+                    match_id=item.match_id,
+                    score=float(item.score),
+                    rationale=item.rationale,
+                    matched=is_match,
+                )
+            )
+        matched = sum(1 for d in details if d.matched)
         return self._build_result(matched, bugs, details, len(matched_truth))
 
     def _similarity_detail(
@@ -244,6 +305,46 @@ class Evaluator:
             "Return structured output with fields: match_id, score, rationale.\n"
             "score must be between 0.0 and 1.0. If there is no match, use an empty match_id.\n\n"
             f"Predicted bug:\nTitle: {bug.title}\nDescription: {bug.description}\n\n"
+            f"Ground truth bugs:\n{gt_text}\n"
+        )
+
+    @staticmethod
+    def _build_batch_prompt(
+        bugs: List[BugFinding],
+        ground_truth: List[Dict[str, Any]],
+    ) -> str:
+        gt_items = [
+            (
+                f"- {item['id']} | bug_type={item.get('bug_type', '')} | "
+                f"difficulty={item.get('difficulty', '')} | "
+                f"minimal_reproduction={'; '.join(item.get('minimal_reproduction', []))} | "
+                f"observed_fault={item.get('observed_fault', '')}"
+            )
+            for item in ground_truth
+        ]
+        gt_text = "\n".join(gt_items)
+
+        pred_items = [
+            f"{idx}. Title: {bug.title}\n   Description: {bug.description}"
+            for idx, bug in enumerate(bugs)
+        ]
+        pred_text = "\n".join(pred_items)
+
+        return (
+            "Evaluate whether each predicted bug matches one of the ground-truth bugs.\n"
+            "Return structured output with a list of matches.\n"
+            "For each predicted bug, provide: bug_index (0-based), match_id (ground-truth id or empty string), score (0.0-1.0), rationale.\n\n"
+            "A match means the predicted bug belongs to the same fault class as a ground-truth bug. A fault class is defined by the root cause and the type of system failure, not by the exact user action, object, or output symptom.\n"
+            "Do not subdivide fault classes by the specific object involved (e.g., scroll vs ladder vs generic portable item) or by the exact visible symptom (e.g., stale text remaining vs updated text missing).\n"
+            "For example, a failure where 'backend state changes are not reflected in displayed text' can manifest as stale text remaining visible OR as updated text failing to appear; both belong to the same fault class if the root cause is the same.\n"
+            "Do not match predictions that are merely about the same broad topic.\n"
+            "Do not match predictions that are purely speculative or hedged without describing a concrete buggy observation.\n"
+            "Score must be between 0.0 and 1.0. Use scores >= 0.6 for genuine matches and lower scores for related but non-matching issues.\n"
+            "Each ground-truth bug may be matched at most once. "
+            "If several predicted bugs correspond to the same ground-truth bug, match the clearest one and use an empty match_id for the others.\n"
+            "Do not leave all predictions unmatched simply because they are duplicated.\n"
+            "If a predicted bug does not match any ground-truth bug, use an empty match_id.\n\n"
+            f"Predicted bugs:\n{pred_text}\n\n"
             f"Ground truth bugs:\n{gt_text}\n"
         )
 
